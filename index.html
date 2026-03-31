@@ -522,6 +522,17 @@
     .pill-success { background: #eaf4ef !important; color: #2d6a4f !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .pill-danger { background: #fdf0f0 !important; color: #8b1a1a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .mono { font-family: monospace; color: #444 !important; }
+    /* Modo fit: escala tabla para que entre en una sola página */
+    body.print-fit .table-section { display: block !important; }
+    body.print-fit .table-wrapper { width: 100%; overflow: visible !important; }
+    body.print-fit table {
+      transform-origin: top left;
+      width: 100% !important;
+      font-size: 7px !important;
+    }
+    body.print-fit th { font-size: 6.5px !important; padding: 4px 5px !important; }
+    body.print-fit td { padding: 3px 5px !important; font-size: 7px !important; }
+    body.print-fit .pill { font-size: 6px !important; padding: 1px 5px !important; }
   }
   .print-header {
     display: none;
@@ -583,7 +594,35 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .loading-text { font-size: 14px; color: var(--text-secondary); font-weight: 500; }
 
-  /* TOAST */
+  .pdf-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-lg);
+    min-width: 240px;
+    overflow: hidden;
+    display: none;
+    z-index: 200;
+    animation: fadeDown 0.15s ease;
+  }
+  @keyframes fadeDown {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .pdf-dropdown.open { display: block; }
+  .pdf-option {
+    padding: 12px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+  .pdf-option:last-child { border-bottom: none; }
+  .pdf-option:hover { background: var(--accent-light); }
+  .pdf-opt-title { font-weight: 600; font-size: 13px; color: var(--text-primary); margin-bottom: 2px; }
+  .pdf-opt-desc { font-size: 11px; color: var(--text-muted); }
   .toast {
     position: fixed;
     bottom: 30px;
@@ -663,9 +702,21 @@
     <button class="btn btn-secondary" id="btnClearAll" style="display:none" onclick="clearAll()">
       ✕ Limpiar todo
     </button>
-    <button class="btn btn-primary" id="btnExportPDF" style="display:none" onclick="exportPDF()">
-      🖨️ Exportar PDF
-    </button>
+    <div class="pdf-menu" id="pdfMenu" style="display:none; position:relative;">
+      <button class="btn btn-primary" onclick="togglePdfMenu(event)">
+        🖨️ Exportar PDF <span style="font-size:10px; opacity:0.7; margin-left:2px;">▾</span>
+      </button>
+      <div class="pdf-dropdown" id="pdfDropdown">
+        <div class="pdf-option" onclick="exportPDF('normal')">
+          <div class="pdf-opt-title">📄 Normal</div>
+          <div class="pdf-opt-desc">A4 horizontal, saltos de página automáticos</div>
+        </div>
+        <div class="pdf-option" onclick="exportPDF('fit')">
+          <div class="pdf-opt-title">🔍 Ajustar a una página</div>
+          <div class="pdf-opt-desc">Escala la tabla para entrar en una sola hoja</div>
+        </div>
+      </div>
+    </div>
   </div>
 </header>
 
@@ -800,16 +851,22 @@
 
   // Column config: key, label, width hint, formatter
   const COLUMNS = [
+    { key: 'NRO. PRESTADOR CONVENIO',   label: 'Nro. Prest. Conv.', fmt: 'mono' },
+    { key: 'DESC. PRESTADOR CONVENIO',  label: 'Desc. Prest. Conv.',fmt: 'text' },
+    { key: 'NRO. PRESTADOR EFECTOR',    label: 'Nro. Prest. Efect.',fmt: 'mono' },
+    { key: 'DESC. PRESTADOR EFECTOR',   label: 'Desc. Prest. Efect.',fmt:'text' },
+    { key: 'MATRICULA PRESTADOR EFECTOR',label:'Matrícula',         fmt: 'mono' },
+    { key: 'TIPO DE ORDEN',             label: 'Tipo Orden',        fmt: 'mono' },
     { key: 'NRO. DE ORDEN',             label: 'Nro. Orden',        fmt: 'mono' },
     { key: 'FECHA DE ORDEN',            label: 'Fecha',             fmt: 'date' },
-    { key: 'APELLIDO Y NOMBRE AFILIADO',label: 'Afiliado',          fmt: 'bold' },
     { key: 'NRO AFILIADO ORIGEN',       label: 'Nro. Afiliado',     fmt: 'mono' },
+    { key: 'APELLIDO Y NOMBRE AFILIADO',label: 'Afiliado',          fmt: 'bold' },
     { key: 'DESC. PLAN',                label: 'Plan',              fmt: 'text' },
-    { key: 'DESC. PRESTADOR EFECTOR',   label: 'Prestador Efector', fmt: 'text' },
-    { key: 'MATRICULA PRESTADOR EFECTOR',label:'Matrícula',         fmt: 'mono' },
+    { key: 'NOMENCLADOR',               label: 'Nomenclador',       fmt: 'mono' },
     { key: 'CODIGO',                    label: 'Código',            fmt: 'mono' },
     { key: 'DESCRIPCION',               label: 'Descripción',       fmt: 'text' },
     { key: 'CANTIDAD',                  label: 'Cant.',             fmt: 'mono' },
+    { key: 'PLAN',                      label: 'Plan Cod.',         fmt: 'mono' },
     { key: 'ESTADO AUTORIZACION',       label: 'Autorización',      fmt: 'pill' },
     { key: 'ESTADO PRESTACION',         label: 'Prestación',        fmt: 'pill' },
     { key: 'CONDICION IVA',             label: 'Cond. IVA',         fmt: 'text' },
@@ -894,7 +951,7 @@
     document.getElementById('statsRow').classList.toggle('visible', hasFiles);
     document.getElementById('tableSection').classList.toggle('visible', hasFiles && allData.length > 0);
     document.getElementById('btnClearAll').style.display = hasFiles ? '' : 'none';
-    document.getElementById('btnExportPDF').style.display = hasFiles ? '' : 'none';
+    document.getElementById('pdfMenu').style.display = hasFiles ? '' : 'none';
     document.getElementById('fileCount').textContent = fileRegistry.length;
     renderFileList();
     updateStats();
@@ -1097,14 +1154,22 @@
     document.querySelector('.table-wrapper').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  // ─── PDF MENU ────────────────────────────────────────────────────────────────
+  function togglePdfMenu(e) {
+    e.stopPropagation();
+    document.getElementById('pdfDropdown').classList.toggle('open');
+  }
+  document.addEventListener('click', () => document.getElementById('pdfDropdown')?.classList.remove('open'));
+
   // ─── EXPORT PDF ──────────────────────────────────────────────────────────────
-  function exportPDF() {
+  function exportPDF(mode) {
+    document.getElementById('pdfDropdown').classList.remove('open');
     if (filteredData.length === 0) { showToast('No hay datos para exportar', 'error'); return; }
 
     const tbody = document.getElementById('tableBody');
     const savedHtml = tbody.innerHTML;
 
-    // Expand all rows (sin paginación) para imprimir
+    // Expande todos los registros sin paginación
     tbody.innerHTML = filteredData.map((row, i) => {
       const cells = COLUMNS.map(col => {
         const val = (row[col.key] !== undefined ? row[col.key] : '') + '';
@@ -1113,9 +1178,37 @@
       return `<tr class="${i % 2 === 0 ? '' : 'row-even'}">${cells}</tr>`;
     }).join('');
 
+    // Aplica clase de fit si corresponde
+    if (mode === 'fit') {
+      document.body.classList.add('print-fit');
+      // Calcula escala para que la tabla entre en una página A4 landscape (277mm wide ≈ 1045px @96dpi)
+      const tableEl = document.querySelector('#dataTable');
+      const pageW = 1045; // A4 landscape usable px
+      const tableW = tableEl.scrollWidth;
+      if (tableW > pageW) {
+        const scale = pageW / tableW;
+        tableEl.style.transform = 'scale(' + scale + ')';
+        tableEl.style.transformOrigin = 'top left';
+        tableEl.style.width = (tableW) + 'px';
+        tableEl.parentElement.style.width = (tableW * scale) + 'px';
+        tableEl.parentElement.style.overflow = 'visible';
+      }
+    } else {
+      document.body.classList.remove('print-fit');
+    }
+
     window.print();
 
-    setTimeout(() => { tbody.innerHTML = savedHtml; }, 500);
+    setTimeout(() => {
+      tbody.innerHTML = savedHtml;
+      document.body.classList.remove('print-fit');
+      const tableEl = document.querySelector('#dataTable');
+      tableEl.style.transform = '';
+      tableEl.style.transformOrigin = '';
+      tableEl.style.width = '';
+      tableEl.parentElement.style.width = '';
+      tableEl.parentElement.style.overflow = '';
+    }, 500);
   }
 
   // ─── EXPORT CSV ──────────────────────────────────────────────────────────────
