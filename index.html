@@ -522,17 +522,6 @@
     .pill-success { background: #eaf4ef !important; color: #2d6a4f !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .pill-danger { background: #fdf0f0 !important; color: #8b1a1a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .mono { font-family: monospace; color: #444 !important; }
-    /* Modo fit: escala tabla para que entre en una sola página */
-    body.print-fit .table-section { display: block !important; }
-    body.print-fit .table-wrapper { width: 100%; overflow: visible !important; }
-    body.print-fit table {
-      transform-origin: top left;
-      width: 100% !important;
-      font-size: 7px !important;
-    }
-    body.print-fit th { font-size: 6.5px !important; padding: 4px 5px !important; }
-    body.print-fit td { padding: 3px 5px !important; font-size: 7px !important; }
-    body.print-fit .pill { font-size: 6px !important; padding: 1px 5px !important; }
   }
   .print-header {
     display: none;
@@ -1178,21 +1167,31 @@
       return `<tr class="${i % 2 === 0 ? '' : 'row-even'}">${cells}</tr>`;
     }).join('');
 
-    // Aplica clase de fit si corresponde
+    // Elimina estilo previo si existía
+    const oldStyle = document.getElementById('print-fit-style');
+    if (oldStyle) oldStyle.remove();
+
     if (mode === 'fit') {
+      // Mide el ancho real de la tabla ya con todos los datos renderizados
+      const tableEl = document.getElementById('dataTable');
+      const tableW = tableEl.offsetWidth;
+      // A4 landscape usable width: 297mm - 30mm margins = 267mm → en px a 96dpi ≈ 1011px
+      // Pero usamos mm directamente via zoom (1mm = 3.7795px)
+      const pageUsableMM = 267; // 297 - 2*15mm márgenes
+      const tableWmm = tableW / 3.7795;
+      const zoom = tableWmm > pageUsableMM ? (pageUsableMM / tableWmm) : 1;
+
+      const style = document.createElement('style');
+      style.id = 'print-fit-style';
+      style.textContent = `
+        @media print {
+          @page { size: A4 landscape; margin: 12mm 15mm; }
+          .table-section { zoom: ${zoom}; width: ${100 / zoom}%; }
+          body.print-fit { overflow: visible !important; }
+        }
+      `;
+      document.head.appendChild(style);
       document.body.classList.add('print-fit');
-      // Calcula escala para que la tabla entre en una página A4 landscape (277mm wide ≈ 1045px @96dpi)
-      const tableEl = document.querySelector('#dataTable');
-      const pageW = 1045; // A4 landscape usable px
-      const tableW = tableEl.scrollWidth;
-      if (tableW > pageW) {
-        const scale = pageW / tableW;
-        tableEl.style.transform = 'scale(' + scale + ')';
-        tableEl.style.transformOrigin = 'top left';
-        tableEl.style.width = (tableW) + 'px';
-        tableEl.parentElement.style.width = (tableW * scale) + 'px';
-        tableEl.parentElement.style.overflow = 'visible';
-      }
     } else {
       document.body.classList.remove('print-fit');
     }
@@ -1202,13 +1201,9 @@
     setTimeout(() => {
       tbody.innerHTML = savedHtml;
       document.body.classList.remove('print-fit');
-      const tableEl = document.querySelector('#dataTable');
-      tableEl.style.transform = '';
-      tableEl.style.transformOrigin = '';
-      tableEl.style.width = '';
-      tableEl.parentElement.style.width = '';
-      tableEl.parentElement.style.overflow = '';
-    }, 500);
+      const s = document.getElementById('print-fit-style');
+      if (s) s.remove();
+    }, 800);
   }
 
   // ─── EXPORT CSV ──────────────────────────────────────────────────────────────
